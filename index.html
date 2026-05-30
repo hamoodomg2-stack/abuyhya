@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="MM-Finanz" />
@@ -24,28 +24,10 @@
 const KEY = "mmfinanz_v3";
 
 const seed = {
-  customers: [
-    { id: 1, name: "Klaus Müller", phone: "0151-123456", type: "business", alwaysZeroVat: false, note: "" },
-    { id: 2, name: "Stefan Weber", phone: "0172-654321", type: "private", alwaysZeroVat: true, note: "Freund" },
-  ],
-  invoices: [
-    { id: 1, customerId: 1, date: "2026-05-10", vatRate: 19, paid: true, items: [{ desc: "Küchenmontage", sell: 800, buy: 600, qty: 1 }] },
-    { id: 2, customerId: 2, date: "2026-05-18", vatRate: 0, paid: true, items: [{ desc: "Regal", sell: 200, buy: 150, qty: 1 }] },
-    { id: 3, customerId: 1, date: "2026-05-25", vatRate: 19, paid: false, items: [{ desc: "Schrank", sell: 1200, buy: 900, qty: 1 }] },
-    { id: 4, customerId: 1, date: "2026-05-29", vatRate: 19, paid: true, items: [{ desc: "Tür einbauen", sell: 350, buy: 250, qty: 1 }] },
-  ],
-  fixedCosts: [
-    { id: 1, name: "Werkstattmiete", amount: 600, section: "work" },
-    { id: 2, name: "Transporter", amount: 280, section: "work" },
-    { id: 3, name: "Versicherung", amount: 150, section: "work" },
-    { id: 4, name: "Steuerberater", amount: 120, section: "work" },
-    { id: 5, name: "Wohnungsmiete", amount: 950, section: "private" },
-    { id: 6, name: "Lebensmittel", amount: 400, section: "private" },
-  ],
-  expenses: [
-    { id: 1, date: "2026-05-08", desc: "Rewe", amount: 85, cat: "Lebensmittel" },
-    { id: 2, date: "2026-05-14", desc: "Tanken", amount: 60, cat: "Transport" },
-  ],
+  customers: [],
+  invoices: [],
+  fixedCosts: [],
+  expenses: [],
 };
 
 function load() {
@@ -142,7 +124,7 @@ function App() {
   const [data, setData] = useState(load);
   const [tab, setTab] = useState(0);
   const [sheet, setSheet] = useState(null);
-  const [period, setPeriod] = useState("Monat");
+  const [period, setPeriod] = useState("Tag");
   const [toast, setToast] = useState(null);
   const [backupBanner, setBackupBanner] = useState(() => daysSinceBackup() >= BACKUP_DAYS);
 
