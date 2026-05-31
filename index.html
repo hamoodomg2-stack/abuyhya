@@ -252,9 +252,32 @@ function generateInvoicePDF(inv, customer) {
   /* Closing */
   .closing { font-size: 12px; line-height: 1.7; margin-top: 5mm; margin-bottom: 4mm; page-break-inside: avoid; break-inside: avoid; }
 
+  /* ── First page: no top margin (logo/header handles spacing) ── */
+  @page :first {
+    margin-top: 0mm;
+    margin-bottom: 28mm;
+    margin-left: 0mm;
+    margin-right: 0mm;
+  }
+
+  /* ── All other pages: comfortable top margin so content breathes ── */
+  @page {
+    margin-top: 22mm;
+    margin-bottom: 28mm;
+    margin-left: 0mm;
+    margin-right: 0mm;
+    @top-left { content: ""; }
+    @top-center { content: ""; }
+    @top-right { content: ""; }
+    @bottom-left { content: ""; }
+    @bottom-center { content: ""; }
+    @bottom-right { content: ""; }
+  }
+
   @media print {
     html, body { height: auto; margin-bottom: 0; }
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* First page keeps its own padding (logo etc.) */
     .page { padding: 12mm 20mm 4mm 25mm; }
     .footer {
       position: fixed;
@@ -263,23 +286,9 @@ function generateInvoicePDF(inv, customer) {
       width: 100%;
       padding: 3mm 20mm 4mm 25mm;
     }
-    .totals-wrap, .closing { page-break-inside: avoid; }
-    table.items tr { page-break-inside: avoid; }
-  }
-
-  @page {
-    /* Remove browser-generated headers and footers (date, time, URL, page number) */
-    margin-top: 0mm;
-    margin-bottom: 28mm;
-    margin-left: 0mm;
-    margin-right: 0mm;
-    /* These empty strings suppress default header/footer content */
-    @top-left { content: ""; }
-    @top-center { content: ""; }
-    @top-right { content: ""; }
-    @bottom-left { content: ""; }
-    @bottom-center { content: ""; }
-    @bottom-right { content: ""; }
+    .totals-wrap, .closing { page-break-inside: avoid; break-inside: avoid; }
+    table.items tr { page-break-inside: avoid; break-inside: avoid; }
+    table.items thead { display: table-header-group; }
   }
 </style>
 </head>
@@ -396,8 +405,14 @@ function generateInvoicePDF(inv, customer) {
   // Inject print CSS to suppress browser auto-headers (URL, date, time)
   const printStyle = win.document.createElement('style');
   printStyle.textContent = `
-    @page {
+    @page :first {
       margin-top: 0mm !important;
+      margin-bottom: 28mm !important;
+      margin-left: 0mm !important;
+      margin-right: 0mm !important;
+    }
+    @page {
+      margin-top: 22mm !important;
       margin-bottom: 28mm !important;
       margin-left: 0mm !important;
       margin-right: 0mm !important;
