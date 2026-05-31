@@ -263,13 +263,23 @@ function generateInvoicePDF(inv, customer) {
       width: 100%;
       padding: 3mm 20mm 4mm 25mm;
     }
-    /* keep totals + closing together */
     .totals-wrap, .closing { page-break-inside: avoid; }
     table.items tr { page-break-inside: avoid; }
   }
 
   @page {
+    /* Remove browser-generated headers and footers (date, time, URL, page number) */
+    margin-top: 0mm;
     margin-bottom: 30mm;
+    margin-left: 0mm;
+    margin-right: 0mm;
+    /* These empty strings suppress default header/footer content */
+    @top-left { content: ""; }
+    @top-center { content: ""; }
+    @top-right { content: ""; }
+    @bottom-left { content: ""; }
+    @bottom-center { content: ""; }
+    @bottom-right { content: ""; }
   }
 </style>
 </head>
@@ -340,7 +350,7 @@ function generateInvoicePDF(inv, customer) {
       <table class="totals-table">
         <tr><td>Gesamtpreis Netto</td><td>${eur2(netto)} EUR</td></tr>
         ${inv.vatRate > 0
-          ? `<tr><td>+ ${eur2(vatAmt)} Mehrwertsteuer ${inv.vatRate},00 %</td><td>${eur2(vatAmt)} EUR</td></tr>`
+          ? `<tr><td>zzgl. ${inv.vatRate}% MwSt.</td><td>${eur2(vatAmt)} EUR</td></tr>`
           : `<tr><td style="color:#888">Steuerbefreit (0%)</td><td>0,00 EUR</td></tr>`}
       </table>
       <div class="total-final">
@@ -381,6 +391,17 @@ function generateInvoicePDF(inv, customer) {
   if (!win) { alert("Bitte Pop-ups erlauben und erneut versuchen"); return; }
   win.document.write(html);
   win.document.close();
+  // Inject print CSS to suppress browser auto-headers (URL, date, time)
+  const printStyle = win.document.createElement('style');
+  printStyle.textContent = `
+    @page {
+      margin-top: 0mm !important;
+      margin-bottom: 30mm !important;
+      margin-left: 0mm !important;
+      margin-right: 0mm !important;
+    }
+  `;
+  win.document.head.appendChild(printStyle);
   setTimeout(() => win.print(), 800);
 }
 
