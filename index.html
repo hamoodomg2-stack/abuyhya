@@ -178,24 +178,18 @@ function generateInvoicePDF(inv, customer) {
     color: #1a1a1a;
     background: #fff;
     /* leave room at bottom for fixed footer */
-    margin-bottom: 28mm;
   }
 
   /* ── Fixed footer — prints at bottom of every page ── */
   .footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    padding: 3mm 20mm 4mm 25mm;
+    margin-top: 12mm;
+    padding-top: 4mm;
     border-top: 1px solid #ccc;
     display: flex;
     justify-content: space-between;
     font-size: 10px;
     color: #666;
     line-height: 1.6;
-    background: #fff;
-    z-index: 100;
   }
   .footer strong { color: #333; }
 
@@ -261,7 +255,7 @@ function generateInvoicePDF(inv, customer) {
   /* ── First page: no top margin (logo/header handles spacing) ── */
   @page :first {
     margin-top: 0mm;
-    margin-bottom: 28mm;
+    margin-bottom: 15mm;
     margin-left: 0mm;
     margin-right: 0mm;
   }
@@ -269,7 +263,7 @@ function generateInvoicePDF(inv, customer) {
   /* ── All other pages: comfortable top margin so content breathes ── */
   @page {
     margin-top: 22mm;
-    margin-bottom: 28mm;
+    margin-bottom: 15mm;
     margin-left: 0mm;
     margin-right: 0mm;
     @top-left { content: ""; }
@@ -286,11 +280,9 @@ function generateInvoicePDF(inv, customer) {
     /* First page keeps its own padding (logo etc.) */
     .page { padding: 12mm 20mm 4mm 25mm; }
     .footer {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      padding: 3mm 20mm 4mm 25mm;
+      margin-top: 10mm;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .totals-wrap, .closing { page-break-inside: avoid; break-inside: avoid; }
     table.items tr { page-break-inside: avoid; break-inside: avoid; }
@@ -408,24 +400,42 @@ function generateInvoicePDF(inv, customer) {
   if (!win) { alert("Bitte Pop-ups erlauben und erneut versuchen"); return; }
   win.document.write(html);
   win.document.close();
-  // Inject print CSS to suppress browser auto-headers (URL, date, time)
+
+  // Add button bar at top
+  const btnBar = win.document.createElement('div');
+  btnBar.id = 'btn-bar';
+  btnBar.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:#1a1a1a;padding:10px 20px;display:flex;gap:10px;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+  btnBar.innerHTML = `
+    <button onclick="window.print()" style="background:#fff;color:#1a1a1a;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-size:13px;font-weight:600;cursor:pointer">Drucken / PDF speichern</button>
+    <button onclick="window.close()" style="background:transparent;color:#aaa;border:1px solid #444;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-size:13px;cursor:pointer">X  Schliessen</button>
+  `;
+  win.document.body.insertBefore(btnBar, win.document.body.firstChild);
+
+  // Push page content below button bar
+  const pageDiv = win.document.querySelector('.page');
+  if (pageDiv) pageDiv.style.paddingTop = '60px';
+
+  // Inject print CSS
   const printStyle = win.document.createElement('style');
   printStyle.textContent = `
+    @media print {
+      #btn-bar { display: none !important; }
+      .page { padding-top: 14mm !important; }
+    }
     @page :first {
       margin-top: 0mm !important;
-      margin-bottom: 28mm !important;
+      margin-bottom: 15mm !important;
       margin-left: 0mm !important;
       margin-right: 0mm !important;
     }
     @page {
       margin-top: 22mm !important;
-      margin-bottom: 28mm !important;
+      margin-bottom: 15mm !important;
       margin-left: 0mm !important;
       margin-right: 0mm !important;
     }
   `;
   win.document.head.appendChild(printStyle);
-  setTimeout(() => win.print(), 800);
 }
 
 function App() {
