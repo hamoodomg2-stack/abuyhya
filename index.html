@@ -396,46 +396,37 @@ function generateInvoicePDF(inv, customer) {
 </body>
 </html>`;
 
-  const win = window.open("", "_blank");
-  if (!win) { alert("Bitte Pop-ups erlauben und erneut versuchen"); return; }
-  win.document.write(html);
-  win.document.close();
+  // Show invoice in fullscreen overlay modal (works in PWA mode)
+  const overlay = document.createElement('div');
+  overlay.id = 'pdf-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:9999;display:flex;flex-direction:column;overflow:hidden';
 
-  // Add button bar at top
-  const btnBar = win.document.createElement('div');
-  btnBar.id = 'btn-bar';
-  btnBar.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:#1a1a1a;padding:10px 20px;display:flex;gap:10px;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.3)';
-  btnBar.innerHTML = `
-    <button onclick="window.print()" style="background:#fff;color:#1a1a1a;border:none;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-size:13px;font-weight:600;cursor:pointer">Drucken / PDF speichern</button>
-    <button onclick="window.close()" style="background:transparent;color:#aaa;border:1px solid #444;border-radius:6px;padding:8px 18px;font-family:Arial,sans-serif;font-size:13px;cursor:pointer">X  Schliessen</button>
+  // Top bar with buttons
+  const topBar = document.createElement('div');
+  topBar.style.cssText = 'flex-shrink:0;background:#1a1a1a;padding:10px 16px;display:flex;gap:10px;align-items:center;safe-area-inset-top:env(safe-area-inset-top,0px)';
+  topBar.innerHTML = `
+    <button onclick="document.getElementById('pdf-overlay').remove()" style="background:transparent;color:#fff;border:1.5px solid #555;border-radius:8px;padding:9px 16px;font-family:Arial,sans-serif;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">&#8592; Zuruck</button>
+    <button onclick="document.getElementById('pdf-frame').contentWindow.print()" style="background:#fff;color:#1a1a1a;border:none;border-radius:8px;padding:9px 16px;font-family:Arial,sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-left:auto">Drucken / PDF</button>
   `;
-  win.document.body.insertBefore(btnBar, win.document.body.firstChild);
+  overlay.appendChild(topBar);
 
-  // Push page content below button bar
-  const pageDiv = win.document.querySelector('.page');
-  if (pageDiv) pageDiv.style.paddingTop = '60px';
+  // iframe for invoice content
+  const iframe = document.createElement('iframe');
+  iframe.id = 'pdf-frame';
+  iframe.style.cssText = 'flex:1;border:none;width:100%;background:#fff';
+  overlay.appendChild(iframe);
+  document.body.appendChild(overlay);
 
-  // Inject print CSS
-  const printStyle = win.document.createElement('style');
-  printStyle.textContent = `
+  // Write invoice HTML into iframe
+  const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+  iframeDoc.open();
+  iframeDoc.write(html + `<style>
     @media print {
-      #btn-bar { display: none !important; }
-      .page { padding-top: 14mm !important; }
+      @page :first { margin-top:0mm; margin-bottom:15mm; margin-left:0mm; margin-right:0mm; }
+      @page { margin-top:22mm; margin-bottom:15mm; margin-left:0mm; margin-right:0mm; }
     }
-    @page :first {
-      margin-top: 0mm !important;
-      margin-bottom: 15mm !important;
-      margin-left: 0mm !important;
-      margin-right: 0mm !important;
-    }
-    @page {
-      margin-top: 22mm !important;
-      margin-bottom: 15mm !important;
-      margin-left: 0mm !important;
-      margin-right: 0mm !important;
-    }
-  `;
-  win.document.head.appendChild(printStyle);
+  </style>`);
+  iframeDoc.close();
 }
 
 function App() {
