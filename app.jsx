@@ -25,10 +25,164 @@ const seed = {
     { id: 1, date: "2026-05-08", desc: "Rewe", amount: 85, cat: "Lebensmittel" },
     { id: 2, date: "2026-05-14", desc: "Tanken", amount: 60, cat: "Transport" },
   ],
+  privateIncome: [
+    { id: 1, date: "2026-05-01", desc: "Kindergeld", amount: 255, cat: "Kindergeld", recurring: true },
+    { id: 2, date: "2026-05-28", desc: "Gehalt Frau", amount: 1800, cat: "Gehalt/Lohn", recurring: true },
+  ],
 };
 
+// ── COMPANY INFO ──────────────────────────────────────────
+const COMPANY_EMAIL = "Info@mezyak-schreinerei.de";
+const COMPANY_PHONE = "015771507987";
+const COMPANY_IBAN = "DE93 7935 0101 0022 3729 32";
+const COMPANY_BANK = "Sparkasse Schweinfurt Hassberge";
+
+// ── PDF GENERATION ────────────────────────────────────────
+function generateInvoicePDF(inv, customer) {
+  const netto = inv.items.reduce((s, it) => {
+    if (it.kind === "arbeit") return s + (parseFloat(it.hours)||0)*(parseFloat(it.rate)||0);
+    return s + (parseFloat(it.sell)||0)*(parseFloat(it.qty)||1);
+  }, 0);
+  const vatAmt = netto * (inv.vatRate / 100);
+  const brutto = netto + vatAmt;
+  const eur2 = (n) => new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n||0);
+
+  let rows = inv.items.map((it, i) => {
+    const isArbeit = it.kind === "arbeit";
+    const menge = isArbeit ? `${it.hours||0} Std` : `${it.qty||1} St`;
+    const desc = it.desc || (isArbeit ? "Arbeitszeit" : "Material");
+    const ePreis = isArbeit ? parseFloat(it.rate)||0 : parseFloat(it.sell)||0;
+    const gPreis = isArbeit
+      ? (parseFloat(it.hours)||0)*(parseFloat(it.rate)||0)
+      : (parseFloat(it.sell)||0)*(parseFloat(it.qty)||1);
+    return `<tr>
+      <td style="text-align:center;padding:7px 8px;border-bottom:1px solid #e8e8e8">${i+1}</td>
+      <td style="text-align:center;padding:7px 8px;border-bottom:1px solid #e8e8e8">${menge}</td>
+      <td style="padding:7px 8px;border-bottom:1px solid #e8e8e8">${desc}</td>
+      <td style="text-align:right;padding:7px 8px;border-bottom:1px solid #e8e8e8;font-variant-numeric:tabular-nums">${eur2(ePreis)}</td>
+      <td style="text-align:right;padding:7px 8px;border-bottom:1px solid #e8e8e8;font-variant-numeric:tabular-nums">${eur2(gPreis)}</td>
+    </tr>`;
+  }).join("");
+
+  const invNum = inv.invoiceNumber || `RG-${String(inv.id).padStart(4,"0")}`;
+  const dateStr = inv.date ? new Date(inv.date).toLocaleDateString("de-DE") : "";
+  const custName = customer?.name || "";
+  const custAddress = customer?.address || "";
+  const baustelle = inv.baustelle || "";
+  const custNum = customer?.kundennr ? `#${customer.kundennr}` : (customer?.id ? String(customer.id).padStart(4,"0") : "");
+  const greeting = customer?.salutation || "Sehr geehrte Damen und Herren";
+
+  const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, Helvetica, sans-serif; font-size: 12.5px; color: #1a1a1a; background: #fff; }
+.page { width: 210mm; margin: 0 auto; padding: 18mm 20mm 40mm 25mm; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10mm; }
+.company-block { text-align: right; font-size: 11px; line-height: 1.75; color: #333; }
+.company-block strong { font-size: 13px; color: #111; }
+.sender-line { font-size: 9px; color: #888; border-bottom: 1px solid #ccc; padding-bottom: 3px; margin-bottom: 5mm; }
+.addr-meta { display: flex; justify-content: space-between; margin-bottom: 10mm; }
+.meta-block { text-align: right; font-size: 12px; line-height: 1.8; }
+.meta-block .meta-label { color: #888; font-size: 10px; }
+.meta-block .inv-num { font-size: 14px; font-weight: bold; margin-top: 4px; }
+.inv-title { font-size: 22px; font-weight: bold; margin-bottom: 6mm; border-bottom: 2px solid #1a1a1a; padding-bottom: 2mm; }
+.greeting { font-size: 12px; margin-bottom: 6mm; line-height: 1.6; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+thead tr { background: #f0f0f0; }
+th { padding: 6px 8px; font-size: 11px; font-weight: 700; border-top: 1.5px solid #ccc; border-bottom: 1.5px solid #ccc; text-align: left; }
+.totals-wrap { display: flex; justify-content: flex-end; margin-top: 6mm; margin-bottom: 6mm; }
+.totals-table { width: 260px; font-size: 12px; border-collapse: collapse; }
+.totals-table td { padding: 4px 6px; }
+.totals-table td:last-child { text-align: right; font-weight: 600; }
+.total-final { background: #1a1a1a; color: #fff; border-radius: 6px; display: flex; justify-content: space-between; padding: 10px 14px; font-size: 14px; font-weight: bold; margin-top: 4px; }
+.closing { font-size: 12px; line-height: 1.8; margin-top: 8mm; margin-bottom: 8mm; }
+.footer { position: fixed; bottom: 0; left: 0; width: 100%; padding: 4mm 20mm 5mm 25mm; border-top: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 10px; color: #666; line-height: 1.7; background: #fff; }
+.footer strong { color: #333; }
+@media print {
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .footer { position: fixed; bottom: 0; }
+}
+@page { margin-bottom: 30mm; }
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <div style="font-size:22px;font-weight:900;letter-spacing:-1px;color:#1a1a1a">MEZYAK<br><span style="font-size:12px;font-weight:400;letter-spacing:2px;color:#888">SCHREINEREI</span></div>
+    <div class="company-block">
+      <strong>Mezyak Schreinerei</strong><br>
+      Zeilstraße 11<br>97464 Niederwerrn<br>
+      Tel: ${COMPANY_PHONE}<br>${COMPANY_EMAIL}
+    </div>
+  </div>
+  <div class="sender-line">Mezyak Schreinerei &nbsp;·&nbsp; Zeilstraße 11 &nbsp;·&nbsp; 97464 Niederwerrn</div>
+  <div class="addr-meta">
+    <div style="font-size:12px;line-height:1.8">
+      ${baustelle ? `<div style="font-size:10px;color:#888">Baustelle</div><div>${baustelle.replace(/\n/g,"<br>")}</div><br>` : ""}
+      ${custName ? `<strong>${custName}</strong><br>` : ""}
+      ${custAddress ? custAddress.replace(/\n/g,"<br>") : ""}
+    </div>
+    <div class="meta-block">
+      <div><span class="meta-label">Datum:</span> <strong>${dateStr}</strong></div>
+      ${custNum ? `<div><span class="meta-label">Kunden-Nr:</span> <strong>${custNum}</strong></div>` : ""}
+      <div class="inv-num">Rechnung ${invNum}</div>
+    </div>
+  </div>
+  <div class="inv-title">Rechnung</div>
+  <div class="greeting">${greeting},<br>hiermit stellen wir Ihnen die ausgeführten Arbeiten in Rechnung.</div>
+  <table>
+    <thead><tr>
+      <th style="width:28px;text-align:center">Pos</th>
+      <th style="width:65px;text-align:center">Menge</th>
+      <th>Beschreibung</th>
+      <th style="width:90px;text-align:right">E-Preis EUR</th>
+      <th style="width:90px;text-align:right">G-Preis EUR</th>
+    </tr></thead>
+    <tbody>
+      ${rows}
+      <tr>
+        <td colspan="4" style="text-align:right;padding:8px;border-top:1.5px solid #ccc;font-weight:600">Gesamtpreis</td>
+        <td style="text-align:right;padding:8px;border-top:1.5px solid #ccc;font-weight:600;font-variant-numeric:tabular-nums">${eur2(netto)}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="totals-wrap">
+    <div>
+      <table class="totals-table">
+        <tr><td>Gesamtpreis Netto</td><td>${eur2(netto)} EUR</td></tr>
+        ${inv.vatRate > 0
+          ? `<tr><td>+ Mehrwertsteuer ${inv.vatRate},00%</td><td>${eur2(vatAmt)} EUR</td></tr>`
+          : `<tr><td style="color:#888">Steuerbefreit (0%)</td><td>0,00 EUR</td></tr>`}
+      </table>
+      <div class="total-final"><span>Gesamtbetrag</span><span>${eur2(brutto)} EUR</span></div>
+    </div>
+  </div>
+  <div class="closing">
+    Wir hoffen, die Arbeiten zu Ihrer Zufriedenheit ausgeführt zu haben und würden uns freuen,<br>
+    in Zukunft wieder für Sie arbeiten zu dürfen.<br><br>
+    Mit freundlichen Grüßen<br><br>
+    <strong>Mohamad Mezyak</strong><br>Mezyak Schreinerei
+  </div>
+  <div class="footer">
+    <div><strong>Bankverbindung:</strong><br>${COMPANY_BANK}<br>IBAN: ${COMPANY_IBAN}</div>
+    <div style="text-align:center"><strong>Mohamad Mezyak</strong><br>Tel: ${COMPANY_PHONE}<br>${COMPANY_EMAIL}</div>
+  </div>
+</div>
+</body></html>`;
+
+  const win = window.open("", "_blank");
+  if (!win) { alert("Bitte Pop-ups erlauben und erneut versuchen"); return; }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 800);
+}
+
 function load() {
-  try { const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : seed; } catch { return seed; }
+  try {
+    const r = localStorage.getItem(KEY);
+    if (!r) return seed;
+    const d = JSON.parse(r);
+    if (!d.privateIncome) d.privateIncome = [];
+    return d;
+  } catch { return seed; }
 }
 function persist(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch {} }
 
@@ -96,6 +250,7 @@ function importData(file, onSuccess, onError) {
     try {
       const parsed = JSON.parse(e.target.result);
       if (!parsed.invoices || !parsed.customers) throw new Error("Ungültige Datei");
+      if (!parsed.privateIncome) parsed.privateIncome = [];
       onSuccess(parsed);
     } catch {
       onError();
@@ -151,23 +306,62 @@ export default function App() {
     [data.expenses, period]
   );
 
+  const filteredPrivateIncome = useMemo(() =>
+    (data.privateIncome || []).filter(e => inPeriod(e.date, period)),
+    [data.privateIncome, period]
+  );
+
   const stats = useMemo(() => {
     let rev = 0, buy = 0, vat = 0;
-    filteredInvoices.forEach(i => i.items.forEach(it => {
-      const s = it.kind === "arbeit" ? (parseFloat(it.sell) || (parseFloat(it.hours)||0)*(parseFloat(it.rate)||0)) : (parseFloat(it.sell)||0)*(parseFloat(it.qty)||1);
-      const b = it.kind === "arbeit" ? 0 : (parseFloat(it.buy)||0)*(parseFloat(it.qty)||1);
-      rev += s; buy += b;
-      if (i.vatRate > 0) vat += s * (i.vatRate / 100);
-    }));
+    // Material
+    let matSell = 0, matBuy = 0, matVat = 0;
+    // Arbeit
+    let arbHours = 0, arbSell = 0, arbVat = 0;
+
+    filteredInvoices.forEach(i => {
+      i.items.forEach(it => {
+        if (it.kind === "arbeit") {
+          const s = (parseFloat(it.hours)||0) * (parseFloat(it.rate)||0);
+          arbSell += s;
+          arbHours += parseFloat(it.hours) || 0;
+          if (i.vatRate > 0) arbVat += s * (i.vatRate / 100);
+          rev += s;
+          if (i.vatRate > 0) vat += s * (i.vatRate / 100);
+        } else {
+          const s = (parseFloat(it.sell)||0) * (parseFloat(it.qty)||1);
+          const b = (parseFloat(it.buy)||0) * (parseFloat(it.qty)||1);
+          matSell += s; matBuy += b;
+          if (i.vatRate > 0) matVat += s * (i.vatRate / 100);
+          rev += s; buy += b;
+          if (i.vatRate > 0) vat += s * (i.vatRate / 100);
+        }
+      });
+    });
+
     const brutto = rev + vat;
-    // Fixkosten are always monthly — never filtered by period
+    const matProfit = matSell - matBuy;           // Marge Material
+    const matBrutto = matSell + matVat;           // Brutto Material
+    const arbNetto = arbSell;                     // Netto Arbeit
+    const arbBrutto = arbSell + arbVat;           // Brutto Arbeit
+    const arbNettoAfterVat = arbSell - arbVat;    // Arbeit nach Steuer (was bleibt)
+
     const fixWork = data.fixedCosts.filter(c => c.section === "work").reduce((s, c) => s + c.amount, 0);
     const fixPriv = data.fixedCosts.filter(c => c.section === "private").reduce((s, c) => s + c.amount, 0);
     const varPriv = filteredExpenses.reduce((s, e) => s + e.amount, 0);
-    // netProfit deducts fixWork only when viewing monthly (makes sense to compare)
+    const privIncome = filteredPrivateIncome.reduce((s, e) => s + e.amount, 0);
     const netProfit = period === "Monat" ? rev - buy - fixWork : rev - buy;
-    return { rev, buy, vat, brutto, margin: rev - buy, netProfit, fixWork, fixPriv, varPriv, privTotal: fixPriv + varPriv };
-  }, [filteredInvoices, filteredExpenses, data.fixedCosts, period]);
+    const totalNettoProfit = matProfit + arbNetto;         // Gesamt Netto (Material Marge + Arbeit Netto)
+    const totalBruttoProfit = matProfit + arbBrutto;       // Gesamt Brutto
+    const totalPrivBalance = privIncome - fixPriv - varPriv;
+
+    return {
+      rev, buy, vat, brutto, margin: rev - buy, netProfit, fixWork, fixPriv, varPriv,
+      privTotal: fixPriv + varPriv, privIncome, totalPrivBalance,
+      matSell, matBuy, matVat, matProfit, matBrutto,
+      arbHours, arbSell, arbVat, arbBrutto, arbNetto, arbNettoAfterVat,
+      totalNettoProfit, totalBruttoProfit,
+    };
+  }, [filteredInvoices, filteredExpenses, filteredPrivateIncome, data.fixedCosts, period]);
 
   return (
     <div style={{ maxWidth: 430, margin: "0 auto", minHeight: "100vh", background: "#F7F5F2", fontFamily: "'Outfit', sans-serif", display: "flex", flexDirection: "column" }}>
@@ -271,7 +465,7 @@ export default function App() {
         {tab === 1 && <Invoices data={data} set={set} sheet={sheet} setSheet={setSheet} eur={eur} deFmt={deFmt} filteredInvoices={filteredInvoices} />}
         {tab === 2 && <Customers data={data} set={set} sheet={sheet} setSheet={setSheet} />}
         {tab === 3 && <FixedCosts data={data} set={set} sheet={sheet} setSheet={setSheet} eur={eur} />}
-        {tab === 4 && <Private data={data} set={set} sheet={sheet} setSheet={setSheet} eur={eur} deFmt={deFmt} filteredExpenses={filteredExpenses} />}
+        {tab === 4 && <Private data={data} set={set} sheet={sheet} setSheet={setSheet} eur={eur} deFmt={deFmt} filteredExpenses={filteredExpenses} filteredPrivateIncome={filteredPrivateIncome} stats={stats} />}
         {tab === 5 && <Settings data={data} setData={setData} showToast={showToast} onBackupDone={() => setBackupBanner(false)} />}
       </div>
 
@@ -289,87 +483,123 @@ export default function App() {
 }
 
 // ── OVERVIEW ──────────────────────────────────────────────
+function StatRow({ label, sub, value, color, bold }) {
+  return (
+    <div className="stat-row">
+      <div>
+        <span style={{ fontSize: 14, color: bold ? "#1a1a1a" : "#555", fontWeight: bold ? 600 : 400 }}>{label}</span>
+        {sub && <div style={{ fontSize: 11, color: "#bbb", marginTop: 1 }}>{sub}</div>}
+      </div>
+      <span style={{ fontSize: bold ? 16 : 15, fontWeight: bold ? 700 : 600, color: color || "#1a1a1a" }}>{value}</span>
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <div style={{ fontSize: 11, fontWeight: 500, color: "#999", textTransform: "uppercase", letterSpacing: .7, margin: "14px 0 10px" }}>{children}</div>
+  );
+}
+
 function Overview({ stats, data, filteredInvoices, eur, deFmt, period }) {
   const recent = [...filteredInvoices].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
 
   return (
     <div>
-      {/* Main stats card */}
+
+      {/* ── MATERIAL BLOCK ── */}
       <div className="card">
-        <div style={{ fontSize: 11, fontWeight: 500, color: "#999", textTransform: "uppercase", letterSpacing: .7, marginBottom: 12 }}>Einnahmen</div>
-
-        <div className="stat-row">
-          <span style={{ fontSize: 14, color: "#555" }}>Netto (ohne MwSt.)</span>
-          <span style={{ fontSize: 15, fontWeight: 600 }}>{eur(stats.rev)}</span>
+        <SectionTitle>🪵 Material</SectionTitle>
+        <StatRow label="Verkauf (Netto)" value={eur(stats.matSell)} />
+        <StatRow label="Einkauf" value={eur(stats.matBuy)} color="#B91C1C" />
+        <StatRow label="MwSt. 19% auf Material" value={eur(stats.matVat)} color="#B45309" />
+        <div style={{ background: "#F7F5F2", borderRadius: 10, padding: "10px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#aaa", marginBottom: 2 }}>Brutto Material</div>
+            <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 18 }}>{eur(stats.matBrutto)}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 11, color: "#aaa", marginBottom: 2 }}>Gewinn (Marge)</div>
+            <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 18, color: "#1A7A45" }}>{eur(stats.matProfit)}</div>
+          </div>
         </div>
-        <div className="stat-row">
-          <span style={{ fontSize: 14, color: "#555" }}>MwSt. (Finanzamt)</span>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#B45309" }}>{eur(stats.vat)}</span>
-        </div>
+      </div>
 
-        {/* Brutto highlight */}
-        <div className="brutto-highlight">
+      {/* ── ARBEIT BLOCK ── */}
+      <div className="card">
+        <SectionTitle>🔨 Arbeitsstunden</SectionTitle>
+        <StatRow label="Stunden gearbeitet" value={`${stats.arbHours.toFixed(1)} Std.`} />
+        <StatRow label="Netto (Arbeit)" value={eur(stats.arbNetto)} />
+        <StatRow label="MwSt. 19% auf Arbeit" value={eur(stats.arbVat)} color="#B45309" />
+        <StatRow label="Nach Steuer (Arbeit)" value={eur(stats.arbNettoAfterVat)} color="#1A7A45" />
+        <div style={{ background: "#F7F5F2", borderRadius: 10, padding: "10px 12px", marginTop: 10, display: "flex", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#aaa", marginBottom: 2 }}>Brutto Arbeit</div>
+            <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 18 }}>{eur(stats.arbBrutto)}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 11, color: "#aaa", marginBottom: 2 }}>Netto Arbeit</div>
+            <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 18, color: "#1A7A45" }}>{eur(stats.arbNetto)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── GESAMT ── */}
+      <div className="card">
+        <SectionTitle>📊 Gesamt</SectionTitle>
+        <StatRow label="Gesamtumsatz Netto" value={eur(stats.rev)} />
+        <StatRow label="MwSt. gesamt (Finanzamt)" value={eur(stats.vat)} color="#B45309" />
+        <StatRow label="Einkaufskosten" value={eur(stats.buy)} color="#B91C1C" />
+        {period === "Monat" && <StatRow label="Fixkosten Geschäft" sub="pro Monat" value={eur(stats.fixWork)} color="#B91C1C" />}
+
+        <div className="brutto-highlight" style={{ marginTop: 12 }}>
           <div>
             <div style={{ fontSize: 11, color: "#aaa", fontWeight: 500, textTransform: "uppercase", letterSpacing: .7 }}>Brutto gesamt</div>
-            <div style={{ fontSize: 11, color: "#777", marginTop: 2 }}>was Kunden zahlen</div>
+            <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>was Kunden zahlen</div>
           </div>
           <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 24, color: "#fff" }}>{eur(stats.brutto)}</div>
         </div>
 
         <hr className="divider-line" />
-        <div style={{ fontSize: 11, fontWeight: 500, color: "#999", textTransform: "uppercase", letterSpacing: .7, marginBottom: 12, marginTop: 4 }}>Ausgaben</div>
-
-        <div className="stat-row">
-          <span style={{ fontSize: 14, color: "#555" }}>Einkaufskosten</span>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#B91C1C" }}>{eur(stats.buy)}</span>
-        </div>
-        <div className="stat-row">
-          <div>
-            <span style={{ fontSize: 14, color: "#555" }}>Fixkosten Geschäft</span>
-            <span style={{ fontSize: 11, color: "#bbb", marginLeft: 6 }}>pro Monat</span>
+        <SectionTitle>💰 Gewinn</SectionTitle>
+        <StatRow label="Material Gewinn" value={eur(stats.matProfit)} color="#1A7A45" />
+        <StatRow label="Arbeit Netto" value={eur(stats.arbNetto)} color="#1A7A45" />
+        <div style={{ background: "#E8F5EE", borderRadius: 10, padding: "10px 14px", marginTop: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontSize: 13, color: "#1A7A45", fontWeight: 500 }}>Gesamt Netto-Gewinn</span>
+            <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, color: "#1A7A45" }}>{eur(stats.totalNettoProfit)}</span>
           </div>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#B91C1C" }}>{eur(stats.fixWork)}</span>
-        </div>
-
-        <hr className="divider-line" />
-        <div style={{ fontSize: 11, fontWeight: 500, color: "#999", textTransform: "uppercase", letterSpacing: .7, marginBottom: 12, marginTop: 4 }}>Ergebnis</div>
-
-        <div className="stat-row">
-          <span style={{ fontSize: 14, color: "#555" }}>Marge (Verkauf - Einkauf)</span>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#1A7A45" }}>{eur(stats.margin)}</span>
-        </div>
-        <div className="stat-row" style={{ borderBottom: "none" }}>
-          <div>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>Netto-Gewinn</span>
-            {period !== "Monat" && <div style={{ fontSize: 11, color: "#bbb", marginTop: 2 }}>ohne Fixkosten (nur Monat)</div>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#555" }}>Gesamt Brutto-Gewinn</span>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>{eur(stats.totalBruttoProfit)}</span>
           </div>
-          <span style={{ fontSize: 16, fontWeight: 700, color: stats.netProfit >= 0 ? "#1A7A45" : "#B91C1C" }}>{eur(stats.netProfit)}</span>
         </div>
       </div>
 
-      {/* Privat summary */}
+      {/* ── PRIVAT ── */}
       <div className="card">
-        <div style={{ fontSize: 11, fontWeight: 500, color: "#999", textTransform: "uppercase", letterSpacing: .7, marginBottom: 12 }}>Privat</div>
-        <div className="stat-row">
-          <div>
-            <span style={{ fontSize: 14, color: "#555" }}>Fixkosten</span>
-            <span style={{ fontSize: 11, color: "#bbb", marginLeft: 6 }}>pro Monat</span>
+        <SectionTitle>🏠 Privat</SectionTitle>
+        {stats.privIncome > 0 && <StatRow label="Einkommen privat" value={eur(stats.privIncome)} color="#1A7A45" />}
+        <StatRow label="Fixkosten" sub="pro Monat" value={eur(stats.fixPriv)} color="#B91C1C" />
+        <StatRow label="Variable Ausgaben" value={eur(stats.varPriv)} color="#B91C1C" />
+        {stats.privIncome > 0 && (
+          <div style={{ background: stats.totalPrivBalance >= 0 ? "#E8F5EE" : "#FEE8E8", borderRadius: 10, padding: "10px 14px", marginTop: 8, display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: stats.totalPrivBalance >= 0 ? "#1A7A45" : "#B91C1C" }}>Privat Bilanz</span>
+            <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 18, color: stats.totalPrivBalance >= 0 ? "#1A7A45" : "#B91C1C" }}>{eur(stats.totalPrivBalance)}</span>
           </div>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#B91C1C" }}>{eur(stats.fixPriv)}</span>
-        </div>
-        <div className="stat-row" style={{ borderBottom: "none" }}>
-          <span style={{ fontSize: 14, color: "#555" }}>Variable Ausgaben</span>
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#B91C1C" }}>{eur(stats.varPriv)}</span>
-        </div>
+        )}
       </div>
 
-      {/* Recent invoices */}
+      {/* ── RECENT INVOICES ── */}
       {recent.length > 0 && (
         <div className="card">
-          <div style={{ fontSize: 11, fontWeight: 500, color: "#999", textTransform: "uppercase", letterSpacing: .7, marginBottom: 12 }}>Rechnungen im Zeitraum</div>
+          <div style={{ fontSize: 11, fontWeight: 500, color: "#999", textTransform: "uppercase", letterSpacing: .7, marginBottom: 12 }}>Letzte Rechnungen</div>
           {recent.map(inv => {
             const cust = data.customers.find(c => c.id === inv.customerId);
-            const netto = inv.items.reduce((s, i) => s + i.sell * i.qty, 0);
+            const netto = inv.items.reduce((s, i) => {
+              if (i.kind === "arbeit") return s + (parseFloat(i.hours)||0)*(parseFloat(i.rate)||0);
+              return s + (parseFloat(i.sell)||0)*(parseFloat(i.qty)||1);
+            }, 0);
             const gross = netto * (1 + inv.vatRate / 100);
             return (
               <div className="row" key={inv.id}>
@@ -384,9 +614,6 @@ function Overview({ stats, data, filteredInvoices, eur, deFmt, period }) {
               </div>
             );
           })}
-          {filteredInvoices.length === 0 && (
-            <div style={{ fontSize: 14, color: "#aaa", textAlign: "center", padding: "16px 0" }}>Keine Rechnungen in diesem Zeitraum</div>
-          )}
         </div>
       )}
 
@@ -583,6 +810,17 @@ function InvoiceSheet({ data, set, close, editing }) {
           Bereits bezahlt
         </label>
 
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="field">
+            <label>Rechnungs-Nr. (optional)</label>
+            <input placeholder={`RG-${String(Date.now()).slice(-4)}`} value={f.invoiceNumber||""} onChange={e => setF({ ...f, invoiceNumber: e.target.value })} />
+          </div>
+          <div className="field">
+            <label>Baustelle (optional)</label>
+            <input placeholder="z.B. Küche, Musterstr. 5" value={f.baustelle||""} onChange={e => setF({ ...f, baustelle: e.target.value })} />
+          </div>
+        </div>
+
         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
           <button className="btn-prim" onClick={save}>Speichern</button>
           <button className="btn-ghost" style={{ minWidth: 90 }} onClick={close}>Abbrechen</button>
@@ -697,12 +935,16 @@ function InvoiceCard({ inv, data, onEdit, onDelete, onTogglePaid, eur, deFmt }) 
           {margin > 0 && <span style={{ fontSize: 12, color: "#1A7A45", fontWeight: 500, padding: "3px 0" }}>+{eur(margin)}</span>}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }} onClick={e => e.stopPropagation()}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#555", cursor: "pointer" }}>
-            <input type="checkbox" className="check" style={{ width: 16, height: 16 }} checked={inv.paid} onChange={onTogglePaid} />
-            Bezahlt
-          </label>
-          <button className="del-btn" onClick={onDelete}>x</button>
-        </div>
+            <button onClick={() => generateInvoicePDF(inv, cust)} style={{
+              background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 8,
+              padding: "5px 10px", fontSize: 12, fontWeight: 500, cursor: "pointer"
+            }}>PDF</button>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#555", cursor: "pointer" }}>
+              <input type="checkbox" className="check" style={{ width: 16, height: 16 }} checked={inv.paid} onChange={onTogglePaid} />
+              Bezahlt
+            </label>
+            <button className="del-btn" onClick={onDelete}>x</button>
+          </div>
       </div>
     </div>
   );
@@ -793,29 +1035,58 @@ function Invoices({ data, set, sheet, setSheet, eur, deFmt, filteredInvoices }) 
 
 // ── CUSTOMERS ─────────────────────────────────────────────
 function CustSheet({ data, set, close, editing }) {
-  const blank = { name: "", phone: "", type: "private", alwaysZeroVat: false, note: "" };
-  const [f, setF] = useState(editing || blank);
+  const nextKundennr = () => {
+    const nums = data.customers.map(c => parseInt(c.kundennr || "0")).filter(n => !isNaN(n));
+    return String(nums.length ? Math.max(...nums) + 1 : 1001).padStart(4, "0");
+  };
+  const blank = { name: "", phone: "", email: "", ansprechpartner: "", kundennr: nextKundennr(), type: "private", alwaysZeroVat: false, note: "" };
+  const [f, setF] = useState(() => editing ? { email: "", ansprechpartner: "", kundennr: "", ...editing } : blank);
   const save = () => {
+    if (!f.name.trim()) return;
     if (editing) set("customers", data.customers.map(c => c.id === editing.id ? { ...f, id: editing.id } : c));
     else set("customers", [...data.customers, { ...f, id: Date.now() }]);
     close();
   };
   return (
     <div className="sheet-pad">
-      <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, marginBottom: 20 }}>{editing ? "Bearbeiten" : "Neuer Kunde"}</div>
+      <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, marginBottom: 20 }}>{editing ? "Kunde bearbeiten" : "Neuer Kunde"}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {[["Name", "name", "Max Mustermann", "text"], ["Telefon", "phone", "0151-...", "tel"]].map(([l, k, ph, t]) => (
-          <div className="field" key={k}>
-            <label>{l}</label>
-            <input type={t} placeholder={ph} value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} />
+        <div style={{ display: "flex", gap: 10 }}>
+          <div className="field" style={{ flex: 2 }}>
+            <label>Name *</label>
+            <input placeholder="Max Mustermann" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
           </div>
-        ))}
+          <div className="field" style={{ flex: 1 }}>
+            <label>Kunden-Nr.</label>
+            <input placeholder="1001" value={f.kundennr} onChange={e => setF({ ...f, kundennr: e.target.value })} />
+          </div>
+        </div>
+        <div className="field">
+          <label>Ansprechpartner</label>
+          <input placeholder="Herr Müller, Frau Schmidt..." value={f.ansprechpartner} onChange={e => setF({ ...f, ansprechpartner: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Telefon</label>
+          <input type="tel" placeholder="0151-..." value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>E-Mail</label>
+          <input type="email" placeholder="max@beispiel.de" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} />
+        </div>
         <div className="field">
           <label>Typ</label>
           <select value={f.type} onChange={e => setF({ ...f, type: e.target.value })}>
             <option value="private">Privat</option>
             <option value="business">Firma</option>
           </select>
+        </div>
+        <div className="field">
+          <label>Adresse</label>
+          <input placeholder="Straße, PLZ Ort" value={f.address||""} onChange={e => setF({ ...f, address: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Anrede (für PDF)</label>
+          <input placeholder="Sehr geehrter Herr Mezyak" value={f.salutation||""} onChange={e => setF({ ...f, salutation: e.target.value })} />
         </div>
         <div className="field">
           <label>Notiz</label>
@@ -847,19 +1118,38 @@ function Customers({ data, set, sheet, setSheet }) {
         </div>
       )}
       <button className="add-btn" onClick={() => setSheet({ type: "customer", payload: null })}>+</button>
+      {data.customers.length === 0 && (
+        <div className="card" style={{ textAlign: "center", padding: "24px 16px" }}>
+          <div style={{ fontSize: 14, color: "#aaa" }}>Noch keine Kunden eingetragen</div>
+        </div>
+      )}
       {data.customers.map(c => {
         const count = data.invoices.filter(i => i.customerId === c.id).length;
+        const total = data.invoices.filter(i => i.customerId === c.id).reduce((s, inv) => s + invNetto(inv), 0);
         return (
           <div className="card" key={c.id} onClick={() => setSheet({ type: "customer", payload: c })} style={{ cursor: "pointer" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 500 }}>{c.name}</div>
-                <div style={{ fontSize: 12, color: "#aaa", marginTop: 3 }}>{c.phone}{c.note ? " · " + c.note : ""}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600 }}>{c.name}</span>
+                  {c.kundennr && <span style={{ fontSize: 11, color: "#aaa", background: "#F5F3F0", borderRadius: 6, padding: "2px 7px" }}>#{c.kundennr}</span>}
+                </div>
+                {c.ansprechpartner && (
+                  <div style={{ fontSize: 12, color: "#666", marginTop: 3 }}>👤 {c.ansprechpartner}</div>
+                )}
+                <div style={{ fontSize: 12, color: "#aaa", marginTop: 3, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {c.phone && <span>📞 {c.phone}</span>}
+                  {c.email && <span>✉ {c.email}</span>}
+                </div>
+                {c.note && <div style={{ fontSize: 11, color: "#bbb", marginTop: 3 }}>{c.note}</div>}
               </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={e => e.stopPropagation()}>
-                {c.alwaysZeroVat && <span className="tag tag-green">0%</span>}
-                <span className="tag tag-grey">{count} Rg.</span>
-                <button className="del-btn" onClick={() => del(c.id)}>x</button>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0, marginLeft: 10 }} onClick={e => e.stopPropagation()}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  {c.alwaysZeroVat && <span className="tag tag-green">0%</span>}
+                  <span className="tag tag-grey">{count} Rg.</span>
+                  <button className="del-btn" onClick={() => del(c.id)}>x</button>
+                </div>
+                {total > 0 && <span style={{ fontSize: 12, color: "#1A7A45", fontWeight: 500 }}>{eur(total)} Netto</span>}
               </div>
             </div>
           </div>
@@ -949,6 +1239,7 @@ function FixedCosts({ data, set, sheet, setSheet, eur }) {
 
 // ── PRIVATE ───────────────────────────────────────────────
 const EXP_CATS = ["Lebensmittel", "Restaurant", "Transport", "Kleidung", "Gesundheit", "Freizeit", "Urlaub", "Sonstiges"];
+const INC_CATS = ["Kindergeld", "Gehalt/Lohn", "Unterhalt", "Rente", "Nebenjob", "Steuerrückerstattung", "Sonstiges"];
 
 function ExpSheet({ data, set, close, editing }) {
   const blank = { date: today(), desc: "", amount: "", cat: "Lebensmittel" };
@@ -981,11 +1272,53 @@ function ExpSheet({ data, set, close, editing }) {
   );
 }
 
-function Private({ data, set, sheet, setSheet, eur, deFmt, filteredExpenses }) {
-  const del = (id) => set("expenses", data.expenses.filter(e => e.id !== id));
-  const sorted = [...filteredExpenses].sort((a, b) => new Date(b.date) - new Date(a.date));
-  const total = filteredExpenses.reduce((s, e) => s + e.amount, 0);
+function IncomeSheet({ data, set, close, editing }) {
+  const blank = { date: today(), desc: "", amount: "", cat: "Kindergeld", recurring: false };
+  const [f, setF] = useState(editing || blank);
+  const save = () => {
+    const e = { ...f, amount: parseFloat(f.amount) || 0 };
+    const list = data.privateIncome || [];
+    if (editing) set("privateIncome", list.map(x => x.id === editing.id ? { ...e, id: editing.id } : x));
+    else set("privateIncome", [...list, { ...e, id: Date.now() }]);
+    close();
+  };
+  return (
+    <div className="sheet-pad">
+      <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 20, marginBottom: 20 }}>{editing ? "Bearbeiten" : "Neues Einkommen"}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="field"><label>Datum</label><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></div>
+        <div className="field"><label>Beschreibung</label><input placeholder="z.B. Kindergeld Jan." value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} /></div>
+        <div className="field"><label>Betrag (EUR)</label><input type="number" placeholder="255" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} /></div>
+        <div className="field">
+          <label>Kategorie</label>
+          <select value={f.cat} onChange={e => setF({ ...f, cat: e.target.value })}>
+            {INC_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+          <input type="checkbox" className="check" id="rec" checked={!!f.recurring} onChange={e => setF({ ...f, recurring: e.target.checked })} />
+          <label htmlFor="rec" style={{ fontSize: 14, color: "#555", cursor: "pointer" }}>Wiederkehrend (monatlich)</label>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button className="btn-prim" onClick={save}>Speichern</button>
+          <button className="btn-ghost" style={{ minWidth: 90 }} onClick={close}>Abbrechen</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Private({ data, set, sheet, setSheet, eur, deFmt, filteredExpenses, filteredPrivateIncome, stats }) {
+  const [subTab, setSubTab] = useState("ausgaben");
+  const delExp = (id) => set("expenses", data.expenses.filter(e => e.id !== id));
+  const delInc = (id) => set("privateIncome", (data.privateIncome || []).filter(e => e.id !== id));
+
+  const sortedExp = [...filteredExpenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const sortedInc = [...filteredPrivateIncome].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const totalExp = filteredExpenses.reduce((s, e) => s + e.amount, 0);
+  const totalInc = filteredPrivateIncome.reduce((s, e) => s + e.amount, 0);
   const bycat = EXP_CATS.map(cat => ({ cat, val: filteredExpenses.filter(e => e.cat === cat).reduce((s, e) => s + e.amount, 0) })).filter(x => x.val > 0).sort((a, b) => b.val - a.val);
+  const byIncCat = INC_CATS.map(cat => ({ cat, val: filteredPrivateIncome.filter(e => e.cat === cat).reduce((s, e) => s + e.amount, 0) })).filter(x => x.val > 0).sort((a, b) => b.val - a.val);
 
   return (
     <div>
@@ -997,46 +1330,137 @@ function Private({ data, set, sheet, setSheet, eur, deFmt, filteredExpenses }) {
           </div>
         </div>
       )}
-      <button className="add-btn" onClick={() => setSheet({ type: "expense", payload: null })}>+</button>
-
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div className="lbl-stat">Variable Ausgaben</div>
-        <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 26 }}>{eur(total)}</div>
-        {bycat.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            {bycat.map(({ cat, val }) => (
-              <div key={cat} style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, color: "#666" }}>{cat}</span>
-                  <span style={{ fontSize: 12, fontWeight: 500 }}>{eur(val)}</span>
-                </div>
-                <div className="bar"><div className="bar-fill" style={{ width: `${Math.min((val / (total || 1)) * 100, 100)}%` }} /></div>
-              </div>
-            ))}
+      {sheet?.type === "privateincome" && (
+        <div className="sheet-overlay">
+          <div className="sheet">
+            <div className="sheet-handle" />
+            <IncomeSheet data={data} set={set} close={() => setSheet(null)} editing={sheet.payload} />
           </div>
-        )}
-      </div>
-
-      {sorted.length === 0 && (
-        <div className="card" style={{ textAlign: "center", padding: "24px 16px" }}>
-          <div style={{ fontSize: 14, color: "#aaa" }}>Keine Ausgaben in diesem Zeitraum</div>
         </div>
       )}
 
-      {sorted.map(e => (
-        <div className="card" key={e.id} onClick={() => setSheet({ type: "expense", payload: e })} style={{ cursor: "pointer" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 500 }}>{e.desc}</div>
-              <div style={{ fontSize: 12, color: "#aaa", marginTop: 2 }}>{deFmt(e.date)} · {e.cat}</div>
-            </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }} onClick={ev => ev.stopPropagation()}>
-              <span style={{ fontSize: 15, fontWeight: 600, color: "#B91C1C" }}>{eur(e.amount)}</span>
-              <button className="del-btn" onClick={() => del(e.id)}>x</button>
-            </div>
+      {/* Sub-tab switcher */}
+      <div style={{ display: "flex", background: "#EDEBE7", borderRadius: 10, padding: 3, gap: 2, marginBottom: 14 }}>
+        {[["ausgaben", "Ausgaben"], ["einkommen", "Einkommen"]].map(([key, label]) => (
+          <button key={key} onClick={() => setSubTab(key)} style={{
+            flex: 1, border: "none", borderRadius: 8, padding: "9px 4px",
+            fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 500, cursor: "pointer",
+            background: subTab === key ? "#fff" : "transparent",
+            color: subTab === key ? "#1a1a1a" : "#888",
+            boxShadow: subTab === key ? "0 1px 4px rgba(0,0,0,.10)" : "none",
+            transition: "all .15s",
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {subTab === "ausgaben" && (
+        <>
+          <button className="add-btn" onClick={() => setSheet({ type: "expense", payload: null })}>+</button>
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="lbl-stat">Variable Ausgaben</div>
+            <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 26 }}>{eur(totalExp)}</div>
+            {bycat.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                {bycat.map(({ cat, val }) => (
+                  <div key={cat} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: "#666" }}>{cat}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500 }}>{eur(val)}</span>
+                    </div>
+                    <div className="bar"><div className="bar-fill" style={{ width: `${Math.min((val / (totalExp || 1)) * 100, 100)}%` }} /></div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+          {sortedExp.length === 0 && (
+            <div className="card" style={{ textAlign: "center", padding: "24px 16px" }}>
+              <div style={{ fontSize: 14, color: "#aaa" }}>Keine Ausgaben in diesem Zeitraum</div>
+            </div>
+          )}
+          {sortedExp.map(e => (
+            <div className="card" key={e.id} onClick={() => setSheet({ type: "expense", payload: e })} style={{ cursor: "pointer" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 500 }}>{e.desc}</div>
+                  <div style={{ fontSize: 12, color: "#aaa", marginTop: 2 }}>{deFmt(e.date)} · {e.cat}</div>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }} onClick={ev => ev.stopPropagation()}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: "#B91C1C" }}>{eur(e.amount)}</span>
+                  <button className="del-btn" onClick={() => delExp(e.id)}>x</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {subTab === "einkommen" && (
+        <>
+          <button className="add-btn" onClick={() => setSheet({ type: "privateincome", payload: null })}>+</button>
+
+          {/* Summary card */}
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="lbl-stat">Privates Einkommen</div>
+            <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 26, color: "#1A7A45" }}>{eur(totalInc)}</div>
+            {byIncCat.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                {byIncCat.map(({ cat, val }) => (
+                  <div key={cat} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: "#666" }}>{cat}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: "#1A7A45" }}>{eur(val)}</span>
+                    </div>
+                    <div className="bar"><div className="bar-fill" style={{ width: `${Math.min((val / (totalInc || 1)) * 100, 100)}%`, background: "#1A7A45" }} /></div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {totalInc > 0 && (
+              <>
+                <hr className="divider-line" />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
+                  <span style={{ fontSize: 13, color: "#888" }}>Ausgaben (variabel)</span>
+                  <span style={{ fontSize: 13, color: "#B91C1C" }}>− {eur(totalExp)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
+                  <span style={{ fontSize: 13, color: "#888" }}>Fixkosten (Monat)</span>
+                  <span style={{ fontSize: 13, color: "#B91C1C" }}>− {eur(stats.fixPriv)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: stats.totalPrivBalance >= 0 ? "#E8F5EE" : "#FEE8E8", borderRadius: 10, marginTop: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: stats.totalPrivBalance >= 0 ? "#1A7A45" : "#B91C1C" }}>Privat Bilanz</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: stats.totalPrivBalance >= 0 ? "#1A7A45" : "#B91C1C" }}>{eur(stats.totalPrivBalance)}</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {sortedInc.length === 0 && (
+            <div className="card" style={{ textAlign: "center", padding: "24px 16px" }}>
+              <div style={{ fontSize: 14, color: "#aaa" }}>Noch kein Einkommen eingetragen</div>
+              <div style={{ fontSize: 12, color: "#ccc", marginTop: 6 }}>Kindergeld, Lohn, Unterhalt usw.</div>
+            </div>
+          )}
+
+          {sortedInc.map(e => (
+            <div className="card" key={e.id} onClick={() => setSheet({ type: "privateincome", payload: e })} style={{ cursor: "pointer" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 500 }}>{e.desc}</div>
+                  <div style={{ fontSize: 12, color: "#aaa", marginTop: 2 }}>
+                    {deFmt(e.date)} · {e.cat}
+                    {e.recurring && <span style={{ marginLeft: 6, background: "#E8F0FE", color: "#3B5EDB", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 600 }}>↻ monatlich</span>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }} onClick={ev => ev.stopPropagation()}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: "#1A7A45" }}>{eur(e.amount)}</span>
+                  <button className="del-btn" onClick={() => delInc(e.id)}>x</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -1079,6 +1503,7 @@ function Settings({ data, setData, showToast, onBackupDone }) {
     ["Kunden", totalCustomers],
     ["Fixkosten", data.fixedCosts.length],
     ["Private Ausgaben", data.expenses.length],
+    ["Privates Einkommen", (data.privateIncome || []).length],
   ];
 
   return (
